@@ -1,0 +1,51 @@
+name: Install Telnet (Password - Working)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  install-telnet:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Install sshpass
+        shell: bash
+        run: |
+          # Install sshpass for password-based SSH
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+          
+      - name: Install telnet
+        shell: bash
+        run: |
+          # Add server to known hosts (disable strict host checking for automation)
+          ssh-keyscan -H -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+          
+          # Install telnet based on package manager using password authentication
+          case "${{ secrets.PACKAGE_MANAGER || 'apt' }}" in
+            "apt")
+              sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "sudo apt-get update && sudo apt-get install -y telnet"
+              ;;
+            "yum")
+              sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "sudo yum install -y telnet"
+              ;;
+            "dnf")
+              sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "sudo dnf install -y telnet"
+              ;;
+            "zypper")
+              sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "sudo zypper install -y telnet"
+              ;;
+            *)
+              echo "Unsupported package manager: ${{ secrets.PACKAGE_MANAGER || 'apt' }}"
+              exit 1
+              ;;
+          esac
+          
+          # Verify installation
+          sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "which telnet && telnet --version"
+          
+      - name: Installation complete
+        run: echo "Telnet installation completed successfully!" 
