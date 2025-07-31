@@ -1,0 +1,125 @@
+name: Provision EC2 Instance
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_type:
+        description: 'EC2 Instance Type'
+        required: true
+        type: choice
+        options:
+          - t3.micro
+          - t3.small
+          - t3.medium
+          - t3.large
+          - t3.xlarge
+          - m5.large
+          - m5.xlarge
+          - c5.large
+          - c5.xlarge
+        default: 't3.micro'
+      
+      instance_name:
+        description: 'Instance Name'
+        required: true
+        type: string
+        default: 'github-actions-ec2'
+      
+      aws_region:
+        description: 'AWS Region'
+        required: true
+        type: choice
+        options:
+          - us-east-1
+          - us-west-2
+          - eu-west-1
+          - ap-southeast-1
+        default: 'us-east-1'
+      
+      volume_size:
+        description: 'Root Volume Size (GB)'
+        required: true
+        type: number
+        default: 20
+      
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+        default: 'dev'
+      
+      project:
+        description: 'Project Name'
+        required: true
+        type: string
+        default: 'github-actions-demo'
+
+jobs:
+  provision-ec2:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ github.event.inputs.aws_region }}
+          
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+        
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: |
+          terraform plan \
+            -var="instance_type=${{ github.event.inputs.instance_type }}" \
+            -var="instance_name=${{ github.event.inputs.instance_name }}" \
+            -var="aws_region=${{ github.event.inputs.aws_region }}" \
+            -var="volume_size=${{ github.event.inputs.volume_size }}" \
+            -var="environment=${{ github.event.inputs.environment }}" \
+            -var="project=${{ github.event.inputs.project }}" \
+            -var="key_name=${{ secrets.AWS_KEY_NAME }}" \
+            -var="subnet_id=${{ secrets.AWS_SUBNET_ID }}" \
+            -out=tfplan
+          
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: terraform apply -auto-approve tfplan
+        
+      - name: Get Terraform Outputs
+        id: terraform_outputs
+        working-directory: ./terraform
+        run: |
+          echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
+          echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+          echo "private_ip=$(terraform output -raw private_ip)" >> $GITHUB_OUTPUT
+          
+      - name: Display Instance Details
+        run: |
+          echo "=== EC2 Instance Created Successfully ==="
+          echo "Instance ID: ${{ steps.terraform_outputs.outputs.instance_id }}"
+          echo "Public IP: ${{ steps.terraform_outputs.outputs.public_ip }}"
+          echo "Private IP: ${{ steps.terraform_outputs.outputs.private_ip }}"
+          echo "Instance Type: ${{ github.event.inputs.instance_type }}"
+          echo "Region: ${{ github.event.inputs.aws_region }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo ""
+          echo "You can SSH to the instance using:"
+          echo "ssh -i your-key.pem ec2-user@${{ steps.terraform_outputs.outputs.public_ip }}"
+          echo ""
+          echo "Or access the web server at:"
+          echo "http://${{ steps.terraform_outputs.outputs.public_ip }}" 
