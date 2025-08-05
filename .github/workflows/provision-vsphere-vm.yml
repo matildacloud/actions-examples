@@ -1,0 +1,142 @@
+name: Provision vSphere VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      vm_name:
+        description: 'VM Name'
+        required: true
+        type: string
+        default: 'github-actions-vm'
+      
+      instance_type:
+        description: 'Instance Type'
+        required: true
+        type: choice
+        options:
+          - small
+          - medium
+          - large
+          - xlarge
+        default: 'small'
+      
+      num_cpus:
+        description: 'Number of CPUs'
+        required: true
+        type: number
+        default: 2
+      
+      memory_mb:
+        description: 'Memory in MB'
+        required: true
+        type: number
+        default: 4096
+      
+      disk_size_gb:
+        description: 'Disk Size in GB'
+        required: true
+        type: number
+        default: 50
+      
+      ipv4_address:
+        description: 'IPv4 Address'
+        required: true
+        type: string
+        default: '192.168.1.100'
+      
+      ipv4_gateway:
+        description: 'IPv4 Gateway'
+        required: true
+        type: string
+        default: '192.168.1.1'
+      
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+        default: 'dev'
+      
+      project:
+        description: 'Project Name'
+        required: true
+        type: string
+        default: 'github-actions-demo'
+
+jobs:
+  provision-vsphere-vm:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+          
+      - name: Terraform Init
+        working-directory: ./terraform-vsphere
+        run: terraform init
+        
+      - name: Terraform Plan
+        working-directory: ./terraform-vsphere
+        run: |
+          terraform plan \
+            -var="vsphere_server=${{ secrets.VSPHERE_SERVER }}" \
+            -var="vsphere_user=${{ secrets.VSPHERE_USER }}" \
+            -var="vsphere_password=${{ secrets.VSPHERE_PASSWORD }}" \
+            -var="allow_unverified_ssl=${{ secrets.VSPHERE_ALLOW_UNVERIFIED_SSL || 'false' }}" \
+            -var="datacenter_name=${{ secrets.VSPHERE_DATACENTER }}" \
+            -var="cluster_name=${{ secrets.VSPHERE_CLUSTER }}" \
+            -var="datastore_name=${{ secrets.VSPHERE_DATASTORE }}" \
+            -var="network_name=${{ secrets.VSPHERE_NETWORK }}" \
+            -var="template_name=${{ secrets.VSPHERE_TEMPLATE }}" \
+            -var="resource_pool_name=${{ secrets.VSPHERE_RESOURCE_POOL || '' }}" \
+            -var="vm_folder=${{ secrets.VSPHERE_VM_FOLDER || '' }}" \
+            -var="vm_name=${{ github.event.inputs.vm_name }}" \
+            -var="instance_type=${{ github.event.inputs.instance_type }}" \
+            -var="num_cpus=${{ github.event.inputs.num_cpus }}" \
+            -var="memory_mb=${{ github.event.inputs.memory_mb }}" \
+            -var="disk_size_gb=${{ github.event.inputs.disk_size_gb }}" \
+            -var="ipv4_address=${{ github.event.inputs.ipv4_address }}" \
+            -var="ipv4_gateway=${{ github.event.inputs.ipv4_gateway }}" \
+            -var="environment=${{ github.event.inputs.environment }}" \
+            -var="project=${{ github.event.inputs.project }}" \
+            -out=tfplan
+          
+      - name: Terraform Apply
+        working-directory: ./terraform-vsphere
+        run: terraform apply -auto-approve tfplan
+        
+      - name: Get Terraform Outputs
+        id: terraform_outputs
+        working-directory: ./terraform-vsphere
+        run: |
+          echo "vm_id=$(terraform output -raw vm_id)" >> $GITHUB_OUTPUT
+          echo "vm_name=$(terraform output -raw vm_name)" >> $GITHUB_OUTPUT
+          echo "vm_ip=$(terraform output -raw vm_ip_address | tr -d '[]' | tr -d '"')" >> $GITHUB_OUTPUT
+          echo "vm_power_state=$(terraform output -raw vm_power_state)" >> $GITHUB_OUTPUT
+          
+      - name: Display VM Details
+        run: |
+          echo "=== vSphere VM Created Successfully ==="
+          echo "VM ID: ${{ steps.terraform_outputs.outputs.vm_id }}"
+          echo "VM Name: ${{ steps.terraform_outputs.outputs.vm_name }}"
+          echo "VM IP Address: ${{ steps.terraform_outputs.outputs.vm_ip }}"
+          echo "Power State: ${{ steps.terraform_outputs.outputs.vm_power_state }}"
+          echo "Instance Type: ${{ github.event.inputs.instance_type }}"
+          echo "CPUs: ${{ github.event.inputs.num_cpus }}"
+          echo "Memory: ${{ github.event.inputs.memory_mb }} MB"
+          echo "Disk Size: ${{ github.event.inputs.disk_size_gb }} GB"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo ""
+          echo "You can SSH to the VM using:"
+          echo "ssh username@${{ steps.terraform_outputs.outputs.vm_ip }}"
+          echo ""
+          echo "VM is accessible at:"
+          echo "http://${{ steps.terraform_outputs.outputs.vm_ip }}" 

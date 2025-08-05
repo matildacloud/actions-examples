@@ -1,0 +1,51 @@
+name: Destroy vSphere VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      vm_name:
+        description: 'VM Name to Destroy'
+        required: true
+        type: string
+        default: 'github-actions-vm'
+
+jobs:
+  destroy-vsphere-vm:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+          
+      - name: Terraform Init
+        working-directory: ./terraform-vsphere
+        run: terraform init
+        
+      - name: Terraform Destroy
+        working-directory: ./terraform-vsphere
+        run: |
+          terraform destroy \
+            -var="vsphere_server=${{ secrets.VSPHERE_SERVER }}" \
+            -var="vsphere_user=${{ secrets.VSPHERE_USER }}" \
+            -var="vsphere_password=${{ secrets.VSPHERE_PASSWORD }}" \
+            -var="allow_unverified_ssl=${{ secrets.VSPHERE_ALLOW_UNVERIFIED_SSL || 'false' }}" \
+            -var="datacenter_name=${{ secrets.VSPHERE_DATACENTER }}" \
+            -var="cluster_name=${{ secrets.VSPHERE_CLUSTER }}" \
+            -var="datastore_name=${{ secrets.VSPHERE_DATASTORE }}" \
+            -var="network_name=${{ secrets.VSPHERE_NETWORK }}" \
+            -var="template_name=${{ secrets.VSPHERE_TEMPLATE }}" \
+            -var="resource_pool_name=${{ secrets.VSPHERE_RESOURCE_POOL || '' }}" \
+            -var="vm_folder=${{ secrets.VSPHERE_VM_FOLDER || '' }}" \
+            -var="vm_name=${{ github.event.inputs.vm_name }}" \
+            -auto-approve
+            
+      - name: Destroy Complete
+        run: |
+          echo "=== vSphere VM Destroyed Successfully ==="
+          echo "VM Name: ${{ github.event.inputs.vm_name }}"
+          echo "All associated resources have been cleaned up." 
