@@ -121,7 +121,7 @@ jobs:
         if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
         run: |
           echo "Pushing Console App package to Octopus Deploy..."
-          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/packages/raw" \
+          curl -X POST "https://poc.octopus.app/api/packages/raw" \
             -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
             -H "Content-Type: multipart/form-data" \
             -F "file=@dotnet-app/SampleDotNetApp-${{ steps.version.outputs.version }}.tar.gz" \
@@ -132,7 +132,7 @@ jobs:
         if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
         run: |
           echo "Pushing Web API package to Octopus Deploy..."
-          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/packages/raw" \
+          curl -X POST "https://poc.octopus.app/api/packages/raw" \
             -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
             -H "Content-Type: multipart/form-data" \
             -F "file=@dotnet-webapi/SampleDotNetWebApi-${{ steps.version.outputs.version }}.tar.gz" \
