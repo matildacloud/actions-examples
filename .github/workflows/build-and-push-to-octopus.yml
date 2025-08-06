@@ -1,0 +1,226 @@
+name: Build .NET and Push to Octopus
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      application_type:
+        description: 'Application Type to Build'
+        required: true
+        type: choice
+        options:
+          - console-app
+          - web-api
+          - both
+        default: 'both'
+      
+      version_override:
+        description: 'Version Override (optional)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          
+      - name: Restore dependencies
+        run: |
+          if [ "${{ github.event.inputs.application_type }}" = "console-app" ] || [ "${{ github.event.inputs.application_type }}" = "both" ]; then
+            dotnet restore dotnet-app/SampleDotNetApp.csproj
+          fi
+          if [ "${{ github.event.inputs.application_type }}" = "web-api" ] || [ "${{ github.event.inputs.application_type }}" = "both" ]; then
+            dotnet restore dotnet-webapi/SampleDotNetWebApi.csproj
+          fi
+          
+      - name: Build Console Application
+        if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
+        run: |
+          cd dotnet-app
+          dotnet build --configuration Release --no-restore
+          
+      - name: Build Web API Application
+        if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
+        run: |
+          cd dotnet-webapi
+          dotnet build --configuration Release --no-restore
+          
+      - name: Run Tests (if any)
+        run: |
+          if [ "${{ github.event.inputs.application_type }}" = "console-app" ] || [ "${{ github.event.inputs.application_type }}" = "both" ]; then
+            dotnet test dotnet-app/SampleDotNetApp.csproj --no-build --verbosity normal
+          fi
+          if [ "${{ github.event.inputs.application_type }}" = "web-api" ] || [ "${{ github.event.inputs.application_type }}" = "both" ]; then
+            dotnet test dotnet-webapi/SampleDotNetWebApi.csproj --no-build --verbosity normal
+          fi
+        continue-on-error: true
+        
+      - name: Generate Version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version_override }}" ]; then
+            echo "version=${{ github.event.inputs.version_override }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=1.0.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+          fi
+          echo "Generated version: ${{ steps.version.outputs.version }}"
+          
+      - name: Publish Console Application
+        if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
+        run: |
+          cd dotnet-app
+          dotnet publish --configuration Release --output ./publish --no-build
+          
+      - name: Publish Web API Application
+        if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
+        run: |
+          cd dotnet-webapi
+          dotnet publish --configuration Release --output ./publish --no-build
+          
+      - name: Create Console App Package
+        if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
+        run: |
+          cd dotnet-app
+          mkdir -p package
+          cp -r publish/* package/
+          echo "Version: ${{ steps.version.outputs.version }}" > package/version.txt
+          echo "Build Date: $(date)" >> package/version.txt
+          echo "Commit: ${{ github.sha }}" >> package/version.txt
+          tar -czf SampleDotNetApp-${{ steps.version.outputs.version }}.tar.gz -C package .
+          
+      - name: Create Web API Package
+        if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
+        run: |
+          cd dotnet-webapi
+          mkdir -p package
+          cp -r publish/* package/
+          echo "Version: ${{ steps.version.outputs.version }}" > package/version.txt
+          echo "Build Date: $(date)" >> package/version.txt
+          echo "Commit: ${{ github.sha }}" >> package/version.txt
+          tar -czf SampleDotNetWebApi-${{ steps.version.outputs.version }}.tar.gz -C package .
+          
+      - name: Upload Console App Package
+        if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-app-package
+          path: dotnet-app/SampleDotNetApp-${{ steps.version.outputs.version }}.tar.gz
+          
+      - name: Upload Web API Package
+        if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-api-package
+          path: dotnet-webapi/SampleDotNetWebApi-${{ steps.version.outputs.version }}.tar.gz
+          
+      - name: Push Console App to Octopus
+        if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
+        run: |
+          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/packages/raw" \
+            -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
+            -H "Content-Type: multipart/form-data" \
+            -F "file=@dotnet-app/SampleDotNetApp-${{ steps.version.outputs.version }}.tar.gz" \
+            -F "overwriteMode=OverwriteExisting"
+            
+      - name: Push Web API to Octopus
+        if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
+        run: |
+          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/packages/raw" \
+            -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
+            -H "Content-Type: multipart/form-data" \
+            -F "file=@dotnet-webapi/SampleDotNetWebApi-${{ steps.version.outputs.version }}.tar.gz" \
+            -F "overwriteMode=OverwriteExisting"
+            
+      - name: Create Octopus Release (Console App)
+        if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
+        run: |
+          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/releases" \
+            -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "ProjectId": "${{ secrets.OCTOPUS_CONSOLE_PROJECT_ID }}",
+              "Version": "${{ steps.version.outputs.version }}",
+              "ReleaseNotes": "Automated release from GitHub Actions - Build #${{ github.run_number }}",
+              "SelectedPackages": [
+                {
+                  "StepName": "Deploy Console App",
+                  "ActionName": "Deploy Console App",
+                  "Version": "${{ steps.version.outputs.version }}"
+                }
+              ]
+            }'
+            
+      - name: Create Octopus Release (Web API)
+        if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
+        run: |
+          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/releases" \
+            -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "ProjectId": "${{ secrets.OCTOPUS_WEBAPI_PROJECT_ID }}",
+              "Version": "${{ steps.version.outputs.version }}",
+              "ReleaseNotes": "Automated release from GitHub Actions - Build #${{ github.run_number }}",
+              "SelectedPackages": [
+                {
+                  "StepName": "Deploy Web API",
+                  "ActionName": "Deploy Web API",
+                  "Version": "${{ steps.version.outputs.version }}"
+                }
+              ]
+            }'
+            
+      - name: Deploy to Environment (Console App)
+        if: github.event.inputs.application_type == 'console-app' || github.event.inputs.application_type == 'both'
+        run: |
+          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/deployments" \
+            -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "ReleaseId": "${{ secrets.OCTOPUS_CONSOLE_PROJECT_ID }}",
+              "EnvironmentId": "${{ secrets.OCTOPUS_ENVIRONMENT_ID }}",
+              "SkipActions": [],
+              "UseGuidedFailure": false
+            }'
+            
+      - name: Deploy to Environment (Web API)
+        if: github.event.inputs.application_type == 'web-api' || github.event.inputs.application_type == 'both'
+        run: |
+          curl -X POST "${{ secrets.OCTOPUS_URL }}/api/deployments" \
+            -H "X-Octopus-ApiKey: ${{ secrets.OCTOPUS_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "ReleaseId": "${{ secrets.OCTOPUS_WEBAPI_PROJECT_ID }}",
+              "EnvironmentId": "${{ secrets.OCTOPUS_ENVIRONMENT_ID }}",
+              "SkipActions": [],
+              "UseGuidedFailure": false
+            }'
+            
+      - name: Build Summary
+        run: |
+          echo "=== Build Summary ==="
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Build Number: ${{ github.run_number }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo ""
+          echo "Applications Built:"
+          if [ "${{ github.event.inputs.application_type }}" = "console-app" ] || [ "${{ github.event.inputs.application_type }}" = "both" ]; then
+            echo "- Console Application"
+          fi
+          if [ "${{ github.event.inputs.application_type }}" = "web-api" ] || [ "${{ github.event.inputs.application_type }}" = "both" ]; then
+            echo "- Web API Application"
+          fi
+          echo ""
+          echo "Packages pushed to Octopus Deploy successfully!" 

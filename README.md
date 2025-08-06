@@ -16,6 +16,12 @@ This repository contains GitHub Actions workflows for various tasks including sy
 - **Secure**: Creates security groups with proper access controls
 - **Automated**: One-click deployment with workflow_dispatch inputs
 
+### 3. .NET Application Building and Deployment
+- **Multi-Application Support**: Console app and Web API
+- **Octopus Deploy Integration**: Automatic package pushing
+- **Version Management**: Automated versioning with build numbers
+- **CI/CD Pipeline**: Complete build, test, and deploy workflow
+
 ## Quick Start
 
 ### System Commands Workflow
@@ -49,6 +55,28 @@ This repository contains GitHub Actions workflows for various tasks including sy
    - Project Name
 6. Click "Run workflow" to deploy
 
+### .NET Application Workflow
+
+#### Prerequisites:
+1. **Octopus Deploy Setup**: Configure these GitHub secrets:
+   - `OCTOPUS_URL` - Your Octopus Deploy server URL
+   - `OCTOPUS_API_KEY` - Your Octopus Deploy API key
+   - `OCTOPUS_CONSOLE_PROJECT_ID` - Console app project ID (optional)
+   - `OCTOPUS_WEBAPI_PROJECT_ID` - Web API project ID (optional)
+   - `OCTOPUS_ENVIRONMENT_ID` - Target environment ID (optional)
+
+#### Build and Deploy .NET Applications:
+1. Go to your repository on GitHub
+2. Click on "Actions" tab
+3. Select "Build .NET Packages and Push to Octopus" workflow
+4. Click "Run workflow"
+5. Choose application type:
+   - **Console App**: Builds the console application
+   - **Web API**: Builds the Web API application
+   - **Both**: Builds both applications
+6. Optionally specify a version override
+7. Click "Run workflow" to build and push packages
+
 ## System Commands
 
 The system commands workflow runs these commands:
@@ -79,6 +107,23 @@ The Terraform configuration creates:
 - **Root Volume**: GP3 encrypted volume with specified size
 - **User Data**: Installs and starts Apache web server
 - **Tags**: Environment, project, and creation metadata
+
+## .NET Applications
+
+### Console Application (`dotnet-app/`)
+- **Framework**: .NET 8.0
+- **Type**: Console application
+- **Features**: System information display, version info, command line arguments
+- **Output**: Displays machine info, OS version, .NET version
+
+### Web API Application (`dotnet-webapi/`)
+- **Framework**: .NET 8.0 Web API
+- **Type**: REST API with Swagger documentation
+- **Features**: Weather forecast endpoints, health checks, system info
+- **Endpoints**: 
+  - `GET /WeatherForecast` - Sample weather data
+  - `GET /WeatherForecast/health` - Health check
+  - `GET /WeatherForecast/info` - System information
 
 ## Output Examples
 
@@ -126,6 +171,25 @@ ssh -i your-key.pem ec2-user@52.23.45.67
 
 Or access the web server at:
 http://52.23.45.67
+```
+
+### .NET Application Output
+
+When you run the .NET build workflow, you'll see output like:
+
+```
+=== Build Summary ===
+Version: 1.0.0.123
+Build Number: 123
+Commit: abc123def456
+Branch: main
+
+Applications Built:
+- Console Application: SampleDotNetApp-1.0.0.123.tar.gz
+- Web API Application: SampleDotNetWebApi-1.0.0.123.tar.gz
+
+Packages pushed to Octopus Deploy successfully!
+You can now create releases and deploy from the Octopus Deploy web interface.
 ```
 
 ## Use Cases
